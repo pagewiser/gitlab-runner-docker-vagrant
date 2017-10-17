@@ -1,0 +1,52 @@
+---
+- hosts: all
+  sudo: true
+  tasks:
+    - stat:
+        path: /usr/local/bin/docker-compose
+      register: compose
+
+    - apt: update_cache=yes
+    - apt: name=nano state=absent
+    - apt: name={{item}} state=present
+      with_items:
+        - mc
+        - htop
+        - vim
+        - git
+        - curl
+        - apt-transport-https
+        - ca-certificates
+        - gnupg2
+        - software-properties-common
+
+    - name: Add gitlab-runner
+      shell: curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | bash
+
+    - name: Add docker and docker-compose repository
+      apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+    - apt_repository:
+        repo: deb https://download.docker.com/linux/debian jessie stable
+        state: present
+    - apt: update_cache=yes
+
+    - name: Install docker and gitlab-runner
+      apt: name={{item}} state=present
+      with_items:
+        - docker-ce
+        - gitlab-runner
+
+    - shell: curl -L https://github.com/docker/compose/releases/download/1.16.1/docker-compose-`uname -s`-`uname -m` -o /usr/local/bin/docker-compose
+      when: not compose.stat.exists
+    - file:
+        path: /usr/local/bin/docker-compose
+        mode: 0755
+
+    - name: Registering gitlab-runner using variables
+      command: gitlab-runner register --non-interactive --url {{url}} --registration-token {{token}} --name {{name}} --tag-list '' --executor docker --docker-image debian:8 --docker-privileged
+      when: url is not none and token is not none and name is not none
+
+    - fail: msg="You must provide ENV variables $url, $token, $name. Runner has not been registred yet."
+      when: not (url is not none and token is not none and name is not none)
